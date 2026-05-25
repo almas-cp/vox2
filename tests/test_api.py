@@ -6,7 +6,7 @@ import respx
 
 from vox.api import ApiError, fetch_command
 
-API_BASE = "https://vox.workers.dev"
+API_BASE = "https://vox.almaas.workers.dev"
 
 
 @respx.mock

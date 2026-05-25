@@ -12,7 +12,7 @@ from vox.utils import detect_distro, detect_shell, get_user_agent
 if TYPE_CHECKING:
     pass
 
-API_BASE = "https://vox.workers.dev"
+API_BASE = "https://vox.almaas.workers.dev"
 TIMEOUT = 15.0
 MAX_RETRIES = 3
 
