@@ -1,0 +1,15 @@
+Source: vox-cli
+Section: utils
+Priority: optional
+Maintainer: Vox Contributors <vox@example.com>
+Build-Depends: debhelper-compat (= 13), python3, python3-pip, python3-venv
+Standards-Version: 4.6.2
+Homepage: https://github.com/your-org/vox-cli
+
+Package: vox-cli
+Architecture: all
+Depends: python3 (>= 3.11), ${misc:Depends}
+Description: Natural language to shell command assistant
+ Vox translates plain English queries into shell commands using AI.
+ It features a polished terminal UI, command history, safety checks,
+ and clipboard support.
