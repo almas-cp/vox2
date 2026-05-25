@@ -118,7 +118,7 @@ def _run_query(query: str, explain: bool = False, dry_run: bool = False) -> None
     # Interactive action loop
     while True:
         choice = Prompt.ask(
-            "\n[bold][E]xecute [e]dit [c]opy [q]uit[/]",
+            "\n[bold]\\[E]xecute \\[e]dit \\[c]opy \\[q]uit[/]",
             choices=["E", "e", "c", "q"],
             default="E",
         )
