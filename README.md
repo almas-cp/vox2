@@ -21,12 +21,10 @@ $ vox find all python files modified today
 ## ✨ Features
 
 - **Natural language → shell commands** — just describe what you want
-- **Polished TUI** — bordered panels, syntax highlighting, keyboard shortcuts
+- **Rich CLI output** — syntax-highlighted commands in styled panels
 - **Safety first** — detects dangerous commands (`rm -rf /`, `mkfs`, etc.) and warns before execution
 - **Command history** — searchable, with favorites, stored in `~/.vox_history.json`
-- **Live output streaming** — see command output in real-time
 - **Clipboard support** — copy commands with a single keystroke
-- **Inline mode** — `--no-tui` for SSH and minimal terminals
 - **Shell-aware** — auto-detects bash, zsh, fish
 - **Distro-aware** — sends OS info for better command generation
 
@@ -81,52 +79,49 @@ vox compress this folder to tar.gz
 
 ### Flags
 
-| Flag        | Description                             |
-|-------------|-----------------------------------------|
-| `--no-tui`  | Use inline Rich mode (no full TUI)      |
-| `--explain` | Show explanation of the generated command|
-| `--dry-run` | Show command without executing          |
-| `--voice`   | Voice input mode (coming soon)          |
-| `--theme`   | `dark` (default) or `light`             |
-| `--version` | Show version                            |
+| Flag         | Description                              |
+|--------------|------------------------------------------|
+| `--explain`  | Show explanation of the generated command |
+| `--dry-run`  | Show command without executing            |
+| `--history`  | Show command history                      |
+| `--voice`    | Voice input mode (coming soon)            |
+| `--version`  | Show version                              |
 
 ### Examples
 
 ```bash
-# Inline mode (great for SSH)
-vox --no-tui find large files over 100mb
-
 # Dry run — see command without executing
 vox --dry-run delete all .log files
 
 # Explain what the command does
 vox --explain set up a python virtual environment
+
+# View past commands
+vox --history
 ```
 
-## ⌨️  Keyboard Shortcuts (TUI)
+### Interactive Prompt
 
-| Key     | Action                     |
-|---------|----------------------------|
-| `Enter` | Execute the command        |
-| `e`     | Edit the command           |
-| `c`     | Copy to clipboard          |
-| `h`     | Toggle history sidebar     |
-| `q`     | Quit                       |
-| `Esc`   | Confirm edit / cancel      |
+After generating a command, vox presents an action menu:
+
+| Key | Action                     |
+|-----|----------------------------|
+| `E` | Execute the command        |
+| `e` | Edit the command           |
+| `c` | Copy to clipboard          |
+| `q` | Quit                       |
 
 ## 🏗️  Architecture
 
 ```
 vox/
-├── cli.py        # Typer entry point, flag parsing, inline mode
-├── tui.py        # Textual TUI application
+├── cli.py        # Typer entry point, flag parsing, interactive prompt
 ├── api.py        # httpx client with retry logic
-├── executor.py   # Async subprocess runner with live streaming
+├── executor.py   # Subprocess runner
 ├── security.py   # Dangerous command detection (regex-based)
 ├── history.py    # JSON-backed command history
 ├── clipboard.py  # pyperclip wrapper with fallback
-├── utils.py      # Shell & distro detection
-└── vox.tcss      # Textual CSS stylesheet
+└── utils.py      # Shell & distro detection
 ```
 
 ### Flow
@@ -134,8 +129,8 @@ vox/
 1. User types `vox <query>`
 2. CLI joins args → sends query to `https://vox.workers.dev/<query>`
 3. API returns a shell command
-4. TUI displays command with syntax highlighting
-5. User confirms → command runs via subprocess with live output
+4. CLI displays command with syntax highlighting in a Rich panel
+5. User picks an action → execute / edit / copy / quit
 6. Entry saved to history
 
 ## 🛡️  Security
@@ -149,7 +144,7 @@ Vox detects dangerous patterns before execution:
 - Fork bombs — `:(){ :|:& };:`
 - Piping remote scripts to shell — `curl ... | bash`
 
-A **warning modal** appears for flagged commands. You can still execute — but must confirm.
+A **confirmation prompt** appears for flagged commands. You can still execute — but must confirm.
 
 ## 🧑‍💻 Development
 

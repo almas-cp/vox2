@@ -12,7 +12,7 @@ requires-python = ">=3.11"
 authors = [
     {name = "Vox Contributors"},
 ]
-keywords = ["cli", "shell", "natural-language", "terminal", "tui"]
+keywords = ["cli", "shell", "natural-language", "terminal"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -27,7 +27,6 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
-    "textual>=0.80",
     "typer[all]>=0.12",
     "rich>=13",
     "httpx>=0.27",
@@ -37,7 +36,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
-    "pytest-asyncio>=0.23",
     "respx>=0.21",
     "ruff>=0.5",
 ]
@@ -56,5 +54,4 @@ line-length = 100
 select = ["E", "F", "I", "W"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]

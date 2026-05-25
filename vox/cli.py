@@ -1,8 +1,7 @@
-"""CLI entry point — Typer app that parses flags and launches the TUI."""
+"""CLI entry point — Typer app with Rich-powered interactive prompts."""
 
 from __future__ import annotations
 
-import sys
 from typing import Optional
 
 import typer
@@ -15,7 +14,7 @@ from vox import __version__
 from vox.api import ApiError, fetch_command
 from vox.clipboard import copy_to_clipboard
 from vox.executor import execute_command_sync
-from vox.history import add_entry
+from vox.history import add_entry, get_all, search
 from vox.security import check_command
 
 console = Console()
@@ -39,11 +38,10 @@ def version_callback(value: bool) -> None:
 )
 def main(
     ctx: typer.Context,
-    no_tui: bool = typer.Option(False, "--no-tui", help="Use inline Rich mode instead of TUI"),
     explain: bool = typer.Option(False, "--explain", help="Explain the generated command"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show command without executing"),
     voice: bool = typer.Option(False, "--voice", help="Voice input mode (coming soon)"),
-    theme: str = typer.Option("dark", "--theme", help="Theme: dark or light"),
+    history_flag: bool = typer.Option(False, "--history", "-H", help="Show command history"),
     version: Optional[bool] = typer.Option(
         None, "--version", "-v", callback=version_callback, is_eager=True,
         help="Show version",
@@ -54,20 +52,37 @@ def main(
         console.print("[bold yellow]🎙  Voice mode is not yet available.[/] Coming soon!")
         raise typer.Exit()
 
+    if history_flag:
+        _show_history()
+        raise typer.Exit()
+
     # Join all extra args as the query
     query = " ".join(ctx.args).strip()
     if not query:
         console.print("[bold red]Please provide a query.[/] Example: [cyan]vox list all files[/]")
         raise typer.Exit(1)
 
-    if no_tui:
-        _inline_mode(query, explain=explain, dry_run=dry_run)
-    else:
-        _tui_mode(query, explain=explain, dry_run=dry_run, theme=theme)
+    _run_query(query, explain=explain, dry_run=dry_run)
 
 
-def _inline_mode(query: str, explain: bool = False, dry_run: bool = False) -> None:
-    """Rich-only inline mode for minimal terminals / SSH."""
+def _show_history() -> None:
+    """Display command history."""
+    entries = get_all()
+    if not entries:
+        console.print("[dim]No history yet.[/]")
+        return
+
+    console.print(Panel("[bold]Command History[/]", border_style="cyan"))
+    for i, entry in enumerate(entries[:30]):
+        fav = "★" if entry.get("favorite") else " "
+        console.print(
+            f"  [dim]{i + 1:>3}[/] [yellow]{fav}[/]  "
+            f"[bold]{entry.get('query', '')}[/]  →  [green]{entry.get('command', '')}[/]"
+        )
+
+
+def _run_query(query: str, explain: bool = False, dry_run: bool = False) -> None:
+    """Fetch command from API and present interactive prompt."""
     with console.status("[bold cyan]Thinking…[/]", spinner="dots"):
         try:
             command = fetch_command(query)
@@ -100,7 +115,7 @@ def _inline_mode(query: str, explain: bool = False, dry_run: bool = False) -> No
         console.print("[bold yellow]--dry-run:[/] Not executing.")
         return
 
-    # Prompt for action
+    # Interactive action loop
     while True:
         choice = Prompt.ask(
             "\n[bold][E]xecute [e]dit [c]opy [q]uit[/]",
@@ -113,7 +128,7 @@ def _inline_mode(query: str, explain: bool = False, dry_run: bool = False) -> No
             if copy_to_clipboard(command):
                 console.print("[green]✔ Copied to clipboard[/]")
             else:
-                console.print("[yellow]Clipboard unavailable[/]")
+                console.print("[yellow]Clipboard unavailable — install xclip or xsel[/]")
         elif choice == "e":
             edited = Prompt.ask("[bold]Edit command[/]", default=command)
             command = edited
@@ -134,21 +149,6 @@ def _inline_mode(query: str, explain: bool = False, dry_run: bool = False) -> No
             console.print(f"\n[bold cyan]$ {command}[/]\n")
             execute_command_sync(command)
             return
-
-
-def _tui_mode(
-    query: str,
-    explain: bool = False,
-    dry_run: bool = False,
-    theme: str = "dark",
-) -> None:
-    """Launch the full Textual TUI."""
-    from vox.tui import VoxApp
-
-    tui_app = VoxApp(query=query, explain=explain, dry_run=dry_run)
-    if theme == "light":
-        tui_app.dark = False
-    tui_app.run()
 
 
 def run() -> None:
