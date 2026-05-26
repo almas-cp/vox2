@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# vox — natural language to shell command
+set -euo pipefail
+
+readonly VOX_API="https://vox.almaas.workers.dev"
+readonly VOX_HISTORY="${VOX_HISTORY:-$HOME/.vox_history}"
+readonly VOX_VERSION="2.0.0"
+
+# ── colors ────────────────────────────────────────────────
+R='\033[0m' B='\033[1m' D='\033[2m'
+RED='\033[31m' GRN='\033[32m' YLW='\033[33m' CYN='\033[36m'
+
+die()  { printf "${RED}error:${R} %s\n" "$*" >&2; exit 1; }
+
+urlencode() {
+  python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$1"
+}
+
+# ── previous command ──────────────────────────────────────
+get_prev_cmd() {
+  # 1. Passed via shell function wrapper (best — see: vox init)
+  if [[ -n "${VOX_PREV:-}" ]]; then
+    echo "$VOX_PREV"; return
+  fi
+  # 2. Fall back to history file
+  local hf="${HISTFILE:-$HOME/.bash_history}"
+  [[ -f "$hf" ]] || return 1
+  local last
+  last=$(tail -1 "$hf" 2>/dev/null | sed 's/^: [0-9]*:[0-9]*;//')
+  # Skip if last command was vox itself
+  if [[ "$last" == vox* ]]; then
+    last=$(tail -2 "$hf" 2>/dev/null | head -1 | sed 's/^: [0-9]*:[0-9]*;//')
+  fi
+  [[ -n "$last" ]] && echo "$last" || return 1
+}
+
+# ── dangerous command check ───────────────────────────────
+check_danger() {
+  local cmd="$1"
+  local -a checks=(
+    'rm\s+.*-[a-zA-Z]*r.*f.*\s/|Recursive delete on root'
+    '\bmkfs\b|Filesystem formatting'
+    '\bdd\s+if=|Raw disk write'
+    '\bshutdown\b|System shutdown'
+    '\breboot\b|System reboot'
+    ':\(\)\s*\{.*:\|:.*&.*\}|Fork bomb'
+    '>\s*/dev/sd[a-z]|Write to block device'
+    'chmod\s+.*777\s+/|Dangerous permissions'
+    'curl\b.*\|\s*(ba)?sh|Piping remote script to shell'
+    'wget\b.*\|\s*(ba)?sh|Piping remote script to shell'
+  )
+  for entry in "${checks[@]}"; do
+    local pat="${entry%%|*}" reason="${entry#*|}"
+    if echo "$cmd" | grep -qE "$pat" 2>/dev/null; then
+      echo "$reason"; return 0
+    fi
+  done
+  return 1
+}
+
+# ── clipboard ─────────────────────────────────────────────
+to_clipboard() {
+  for tool in xclip xsel wl-copy pbcopy; do
+    if command -v "$tool" &>/dev/null; then
+      case "$tool" in
+        xclip)   printf '%s' "$1" | xclip -selection clipboard ;;
+        xsel)    printf '%s' "$1" | xsel --clipboard ;;
+        wl-copy) printf '%s' "$1" | wl-copy ;;
+        pbcopy)  printf '%s' "$1" | pbcopy ;;
+      esac
+      printf "${GRN}✔ copied${R}\n"; return
+    fi
+  done
+  printf "${YLW}no clipboard tool found (install xclip/xsel/wl-copy)${R}\n"
+}
+
+# ── history ───────────────────────────────────────────────
+show_history() {
+  [[ -f "$VOX_HISTORY" ]] || { printf "${D}no history yet${R}\n"; exit 0; }
+  printf "\n${B}${CYN} History${R}\n\n"
+  local i=1
+  while IFS=$'\t' read -r _ts query cmd; do
+    printf "  ${D}%3d${R}  ${B}%s${R}  →  ${GRN}%s${R}\n" "$i" "$query" "$cmd"
+    ((i++))
+  done < <(tail -20 "$VOX_HISTORY")
+  echo; exit 0
+}
+
+# ── shell init (outputs a function for $VOX_PREV) ────────
+shell_init() {
+  case "${1:-bash}" in
+    bash|zsh)
+      cat <<'FUNC'
+vox() {
+  local _vox_exit=$?
+  VOX_PREV="$(fc -ln -1 2>/dev/null | sed 's/^\s*//')" \
+  VOX_PREV_EXIT="$_vox_exit" \
+  command vox "$@"
+}
+FUNC
+      ;;
+    fish)
+      cat <<'FUNC'
+function vox
+  set -lx VOX_PREV_EXIT $status
+  set -lx VOX_PREV (builtin history | head -1)
+  command vox $argv
+end
+FUNC
+      ;;
+    *) die "unsupported shell: $1 (try bash, zsh, fish)" ;;
+  esac
+  exit 0
+}
+
+# ── display ───────────────────────────────────────────────
+show_cmd() {
+  local cmd="$1"
+  local maxlen=40 len
+  while IFS= read -r line; do
+    len=${#line}; (( len > maxlen )) && maxlen=$len
+  done <<< "$cmd"
+  (( maxlen > 70 )) && maxlen=70
+  local border; border=$(printf '─%.0s' $(seq 1 $((maxlen + 4))))
+
+  printf "\n╭%s╮\n" "$border"
+  while IFS= read -r line; do
+    printf "│  ${B}${GRN}%-${maxlen}s${R}  │\n" "$line"
+  done <<< "$cmd"
+  printf "╰%s╯\n" "$border"
+}
+
+# ── parse flags ───────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --version|-v) echo "vox $VOX_VERSION"; exit 0 ;;
+    --history|-H) show_history ;;
+    init)         shift; shell_init "${1:-bash}" ;;
+    --help|-h)
+      cat <<EOF
+${B}vox${R} — natural language to shell command
+
+${B}USAGE${R}
+  vox <query>           translate plain English to a shell command
+  vox                   examine/fix the previous command
+  vox init <shell>      print shell function for .bashrc/.zshrc
+
+${B}OPTIONS${R}
+  -h, --help            show this help
+  -v, --version         show version
+  -H, --history         show history
+
+${B}SETUP${R}
+  Add to .bashrc / .zshrc:
+    eval "\$(vox init bash)"
+
+${B}EXAMPLES${R}
+  vox find all python files modified today
+  vox kill process on port 3000
+  vox                   # examines/fixes your last command
+EOF
+      exit 0 ;;
+    --) shift; break ;;
+    -*) die "unknown option: $1" ;;
+    *)  break ;;
+  esac
+done
+
+# ── build query ───────────────────────────────────────────
+query="$*"
+if [[ -z "$query" ]]; then
+  prev=$(get_prev_cmd) || die "couldn't read previous command.\nSetup:  eval \"\$(vox init bash)\""
+  prev_exit="${VOX_PREV_EXIT:-0}"
+  if [[ "$prev_exit" != "0" ]]; then
+    query="fix this command (exit code $prev_exit): $prev"
+    printf "${RED}✖${R} ${D}previous command failed (exit %s):${R} ${B}%s${R}\n" "$prev_exit" "$prev"
+  else
+    query="$prev"
+    printf "${D}previous command:${R} ${B}%s${R}\n" "$prev"
+  fi
+fi
+
+# ── fetch ─────────────────────────────────────────────────
+encoded=$(urlencode "$query")
+printf "${CYN}thinking…${R}"
+
+cmd=$(curl -sf --max-time 15 \
+  -H "User-Agent: vox/$VOX_VERSION" \
+  "$VOX_API/$encoded") \
+  || { printf "\r\033[2K"; die "API request failed — check your connection"; }
+printf "\r\033[2K"
+
+show_cmd "$cmd"
+
+# ── safety ────────────────────────────────────────────────
+danger=""
+danger=$(check_danger "$cmd") || true
+[[ -n "$danger" ]] && printf "\n${RED}${B}⚠  WARNING:${R} ${RED}%s${R}\n" "$danger"
+
+# ── save to history ───────────────────────────────────────
+printf '%s\t%s\t%s\n' "$(date +%Y-%m-%dT%H:%M:%S)" "$query" "$cmd" >> "$VOX_HISTORY"
+
+# ── interactive prompt ────────────────────────────────────
+while true; do
+  printf "\n  ${B}[E]${R}xecute  ${B}[e]${R}dit  ${B}[c]${R}opy  ${B}[q]${R}uit  "
+  read -rsn1 choice; echo
+  case "${choice:-q}" in
+    E)
+      if [[ -n "$danger" ]]; then
+        printf "${RED}dangerous command. proceed? [y/N]${R} "
+        read -rsn1 yn; echo
+        [[ "$yn" != "y" ]] && continue
+      fi
+      printf "\n${CYN}\$ %s${R}\n\n" "$cmd"
+      eval "$cmd"
+      exit $?
+      ;;
+    e)
+      read -rep "edit: " -i "$cmd" cmd
+      danger=$(check_danger "$cmd") || danger=""
+      [[ -n "$danger" ]] && printf "${RED}${B}⚠  WARNING:${R} ${RED}%s${R}\n" "$danger"
+      show_cmd "$cmd"
+      ;;
+    c) to_clipboard "$cmd" ;;
+    q) exit 0 ;;
+  esac
+done

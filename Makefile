@@ -1,26 +1,16 @@
-.PHONY: install dev lint test clean deb
+PREFIX ?= $(HOME)/.local
+
+.PHONY: install uninstall
 
 install:
-	pip install .
+	@mkdir -p $(PREFIX)/bin
+	@cp bin/vox $(PREFIX)/bin/vox
+	@chmod +x $(PREFIX)/bin/vox
+	@echo "✔ installed to $(PREFIX)/bin/vox"
+	@echo ""
+	@echo "Add to .bashrc / .zshrc:"
+	@echo '  eval "$$(vox init bash)"'
 
-dev:
-	pip install -e ".[dev]"
-
-lint:
-	ruff check vox/ tests/
-	ruff format --check vox/ tests/
-
-format:
-	ruff format vox/ tests/
-	ruff check --fix vox/ tests/
-
-test:
-	python -m pytest tests/ -v
-
-clean:
-	rm -rf build/ dist/ *.egg-info vox/*.pyc vox/__pycache__ tests/__pycache__
-	rm -rf debian/vox-cli/ debian/*.debhelper* debian/*.substvars debian/files
-
-deb:
-	dpkg-buildpackage -us -uc -b
-	@echo "Package built. Find .deb in parent directory."
+uninstall:
+	@rm -f $(PREFIX)/bin/vox
+	@echo "✔ removed $(PREFIX)/bin/vox"

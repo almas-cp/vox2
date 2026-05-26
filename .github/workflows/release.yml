@@ -1,22 +1,29 @@
-name: CI
+name: Release
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    tags: ['v*']
+
+permissions:
+  contents: write
 
 jobs:
-  lint:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Shellcheck
         run: shellcheck bin/vox
+
       - name: Smoke test
         run: |
           chmod +x bin/vox
           bin/vox --version
           bin/vox --help
-          bin/vox init bash
-          bin/vox init zsh
-          bin/vox init fish
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/vox
+          generate_release_notes: true
