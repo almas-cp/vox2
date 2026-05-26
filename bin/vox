@@ -204,7 +204,7 @@ printf '%s\t%s\t%s\n' "$(date +%Y-%m-%dT%H:%M:%S)" "$query" "$cmd" >> "$VOX_HIST
 while true; do
   printf "\n  ${B}[E]${R}xecute  ${B}[e]${R}dit  ${B}[c]${R}opy  ${B}[q]${R}uit  "
   read -rsn1 choice; echo
-  case "${choice:-q}" in
+  case "${choice:-E}" in
     E)
       if [[ -n "$danger" ]]; then
         printf "${RED}dangerous command. proceed? [y/N]${R} "
