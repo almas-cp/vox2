@@ -1,4 +1,8 @@
-PREFIX ?= $(HOME)/.local
+ifeq ($(shell id -u),0)
+  PREFIX ?= /usr/local
+else
+  PREFIX ?= $(HOME)/.local
+endif
 
 .PHONY: install uninstall
 
